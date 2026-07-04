@@ -39,22 +39,56 @@ def _subdirs(path: Path):
     return out
 
 
-def find_ingest_dir():
-    """Auto-locate a folder named 'ingest' (any case) in the usual spots.
+def _ci_child(parent: Path, name: str):
+    """Child dir of `parent` matching `name` case-insensitively, or None."""
+    low = name.lower()
+    for d in _subdirs(parent):
+        if d.name.lower() == low:
+            return d
+    return None
 
-    Editors are told to make an `INGEST` folder; this finds it so nobody has to
-    paste a path. Breadth-first from the common roots, stopping at the
-    shallowest level that has a match — so it never crawls deep into big
-    project trees. Returns a Path or None.
+
+def recommended_paths():
+    """The canonical layout bolt recommends: Documents/Working Folder/{INGEST,PROJECTS}.
+
+    Reuses existing 'Documents' / 'Working Folder' dirs by whatever case they
+    already have, so we never make a duplicate next to one that exists.
+    Returns (working_folder, ingest, projects) as Paths (may not exist yet).
+    """
+    home = Path.home()
+    docs = _ci_child(home, "Documents") or (home / "Documents")
+    wf = _ci_child(docs, "Working Folder") or (docs / "Working Folder")
+    ingest = _ci_child(wf, "INGEST") or (wf / "INGEST")
+    projects = _ci_child(wf, "PROJECTS") or (wf / "PROJECTS")
+    return wf, ingest, projects
+
+
+def find_ingest_dir():
+    """Auto-locate the ingest folder, preferring bolt's canonical layout.
+
+    1. Documents/Working Folder/INGEST (the recommended structure) always wins.
+    2. Otherwise a breadth-first hunt for any folder named 'ingest' in the usual
+       roots, stopping at the shallowest match so it never crawls deep project
+       trees. Returns a Path or None.
     """
     home = Path.home()
 
+    # 1. canonical layout
+    _, canonical_ingest, _ = recommended_paths()
+    if canonical_ingest.exists():
+        return canonical_ingest
+
     def best(hits):
         hits = list(dict.fromkeys(hits))
-        hits.sort(key=lambda p: (len(p.parts), 0 if "Documents" in p.parts else 1))
+        # prefer anything living under a "Working Folder", then shallower paths
+        hits.sort(key=lambda p: (
+            0 if any(part.lower() == "working folder" for part in p.parts) else 1,
+            len(p.parts),
+            0 if "Documents" in p.parts else 1,
+        ))
         return hits[0]
 
-    # a bare ~/ingest wins immediately
+    # a bare ~/ingest
     top = [d for d in _subdirs(home) if d.name.lower() == "ingest"]
     if top:
         return best(top)
@@ -94,16 +128,25 @@ def save(cfg):
 def first_run_wizard(cfg):
     print("\n== bolt first-time setup ==")
     found = find_ingest_dir()
+
     if found:
         print(f"Found your ingest folder:  {found}")
         ans = input("Use it? [Enter = yes / or paste a different path]: ").strip().strip('"').strip("'")
-        path = ans or str(found)
+        ingest = Path(os.path.expanduser(ans or str(found))).resolve()
     else:
-        print("Couldn't find an 'ingest' folder automatically.")
-        print("Where should downloads land? (make one called INGEST anywhere and I'll find it next time)")
-        default = str(Path.home() / "Documents" / "INGEST")
-        path = input(f"Path [{default}]: ").strip().strip('"').strip("'") or default
-    ingest = Path(os.path.expanduser(path)).resolve()
+        wf, ingest_rec, projects_rec = recommended_paths()
+        print("Didn't find an ingest folder. bolt's recommended layout is:\n")
+        print(f"   {wf}")
+        print( "       INGEST/     <- downloads land here (safe to clear out anytime)")
+        print( "       PROJECTS/   <- your actual edits\n")
+        ans = input("Set that up for me? [Enter = yes / or paste your own ingest path]: ").strip().strip('"').strip("'")
+        if ans:
+            ingest = Path(os.path.expanduser(ans)).resolve()
+        else:
+            projects_rec.mkdir(parents=True, exist_ok=True)
+            ingest = ingest_rec
+            print(f"Created {wf} with INGEST/ and PROJECTS/.")
+
     ingest.mkdir(parents=True, exist_ok=True)
     cfg["ingest_dir"] = str(ingest)
     save(cfg)

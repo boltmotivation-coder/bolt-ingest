@@ -14,7 +14,18 @@ curl -fsSL https://raw.githubusercontent.com/boltmotivation-coder/bolt-ingest/ma
 irm https://raw.githubusercontent.com/boltmotivation-coder/bolt-ingest/main/install.ps1 | iex
 ```
 
-Then close the terminal, open a new one, and type `bolt`. On first run it auto-finds a folder named `INGEST` (make one anywhere under Documents/Desktop/Downloads) and offers it — just hit Enter. If it can't find one, it asks where to put downloads.
+Then close the terminal, open a new one, and type `bolt`. On first run it looks for the recommended layout and offers it — just hit Enter. If you don't have it yet, bolt offers to set it up for you.
+
+### Recommended folder layout
+
+```
+Documents/
+    Working Folder/
+        INGEST/     <- everything bolt downloads (safe to clear out anytime)
+        PROJECTS/   <- your actual Premiere projects
+```
+
+bolt looks for `Documents/Working Folder/INGEST` first. If you keep your ingest folder somewhere else, it'll still find a folder named `INGEST`/`ingest` under Documents, Desktop, Downloads, or Movies and offer that instead.
 
 ## Daily use
 
