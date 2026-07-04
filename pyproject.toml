@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bolt-ingest"
+version = "1.0.0"
+description = "Bolt Motivation footage ingest tool: paste a Notion research block, get Premiere-ready clips in ingest/"
+requires-python = ">=3.9"
+dependencies = [
+    "yt-dlp",
+    "static-ffmpeg",
+]
+
+[project.scripts]
+bolt = "bolt_ingest.cli:main"
+
+[tool.setuptools]
+packages = ["bolt_ingest"]
