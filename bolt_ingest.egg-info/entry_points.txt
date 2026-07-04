@@ -1,0 +1,2 @@
+[console_scripts]
+bolt = bolt_ingest.cli:main

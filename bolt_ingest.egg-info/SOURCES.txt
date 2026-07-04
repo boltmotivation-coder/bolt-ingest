@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+bolt_ingest/__init__.py
+bolt_ingest/cli.py
+bolt_ingest/config.py
+bolt_ingest/downloader.py
+bolt_ingest/manifest.py
+bolt_ingest/parser.py
+bolt_ingest/postprocess.py
+bolt_ingest/transcript.py
+bolt_ingest/update.py
+bolt_ingest.egg-info/PKG-INFO
+bolt_ingest.egg-info/SOURCES.txt
+bolt_ingest.egg-info/dependency_links.txt
+bolt_ingest.egg-info/entry_points.txt
+bolt_ingest.egg-info/requires.txt
+bolt_ingest.egg-info/top_level.txt

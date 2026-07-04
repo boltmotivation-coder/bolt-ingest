@@ -1,6 +1,6 @@
 # bolt
 
-Bolt Motivation footage ingest tool. Paste Aaradhya's research block from Notion, get best-quality Premiere-ready clips in your `ingest` folder. No 4K Video Downloader, no MP4 vs MKV guessing, no manual converting.
+Bolt Motivation footage ingest tool. Paste the research block from Notion, get best-quality Premiere-ready clips in your `ingest` folder. No 4K Video Downloader, no MP4 vs MKV guessing, no manual converting.
 
 ## Install (once)
 
