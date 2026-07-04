@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/boltmotivation-coder/bolt-ingest/ma
 irm https://raw.githubusercontent.com/boltmotivation-coder/bolt-ingest/main/install.ps1 | iex
 ```
 
-Then close the terminal, open a new one, and type `bolt`. First run asks where your ingest folder is.
+Then close the terminal, open a new one, and type `bolt`. On first run it auto-finds a folder named `INGEST` (make one anywhere under Documents/Desktop/Downloads) and offers it — just hit Enter. If it can't find one, it asks where to put downloads.
 
 ## Daily use
 

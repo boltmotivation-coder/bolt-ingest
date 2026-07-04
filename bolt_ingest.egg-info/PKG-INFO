@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: bolt-ingest
-Version: 1.2.0
+Version: 1.3.0
 Summary: Bolt Motivation footage ingest tool: paste a Notion research block, get Premiere-ready clips in ingest/
 Requires-Python: >=3.9
 Requires-Dist: yt-dlp

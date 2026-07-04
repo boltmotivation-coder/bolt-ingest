@@ -15,6 +15,66 @@ DEFAULTS = {
 }
 
 
+# folders we never descend into while hunting for an ingest folder
+_SKIP_DIRS = {"library", "node_modules", "applications", "venv", ".venv",
+              "site-packages", "__pycache__", "photos library.photoslibrary"}
+
+
+def _subdirs(path: Path):
+    """Direct child directories of `path`, skipping hidden/heavy ones. Never raises."""
+    out = []
+    try:
+        with os.scandir(path) as it:
+            for e in it:
+                name = e.name
+                if name.startswith(".") or name.lower() in _SKIP_DIRS:
+                    continue
+                try:
+                    if e.is_dir(follow_symlinks=False):
+                        out.append(Path(e.path))
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return out
+
+
+def find_ingest_dir():
+    """Auto-locate a folder named 'ingest' (any case) in the usual spots.
+
+    Editors are told to make an `INGEST` folder; this finds it so nobody has to
+    paste a path. Breadth-first from the common roots, stopping at the
+    shallowest level that has a match — so it never crawls deep into big
+    project trees. Returns a Path or None.
+    """
+    home = Path.home()
+
+    def best(hits):
+        hits = list(dict.fromkeys(hits))
+        hits.sort(key=lambda p: (len(p.parts), 0 if "Documents" in p.parts else 1))
+        return hits[0]
+
+    # a bare ~/ingest wins immediately
+    top = [d for d in _subdirs(home) if d.name.lower() == "ingest"]
+    if top:
+        return best(top)
+
+    roots = [home / "Documents", home / "Desktop", home / "Downloads", home / "Movies"]
+    frontier = [r for r in roots if r.exists()]
+    for _ in range(4):  # depth cap
+        level_hits, next_frontier = [], []
+        for d in frontier:
+            for child in _subdirs(d):
+                if child.name.lower() == "ingest":
+                    level_hits.append(child)
+                else:
+                    next_frontier.append(child)
+        if level_hits:
+            return best(level_hits)
+        frontier = next_frontier
+    return None
+
+
 def load():
     if CONFIG_PATH.exists():
         try:
@@ -33,9 +93,16 @@ def save(cfg):
 
 def first_run_wizard(cfg):
     print("\n== bolt first-time setup ==")
-    print("Where is your ingest folder? (all downloads land here)")
-    default = str(Path.home() / "ingest")
-    path = input(f"Path [{default}]: ").strip().strip('"').strip("'") or default
+    found = find_ingest_dir()
+    if found:
+        print(f"Found your ingest folder:  {found}")
+        ans = input("Use it? [Enter = yes / or paste a different path]: ").strip().strip('"').strip("'")
+        path = ans or str(found)
+    else:
+        print("Couldn't find an 'ingest' folder automatically.")
+        print("Where should downloads land? (make one called INGEST anywhere and I'll find it next time)")
+        default = str(Path.home() / "Documents" / "INGEST")
+        path = input(f"Path [{default}]: ").strip().strip('"').strip("'") or default
     ingest = Path(os.path.expanduser(path)).resolve()
     ingest.mkdir(parents=True, exist_ok=True)
     cfg["ingest_dir"] = str(ingest)

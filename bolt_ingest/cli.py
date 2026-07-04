@@ -229,7 +229,10 @@ def main():
         self_update()
         update_ytdlp(cfg)
 
-    if not cfg.get("ingest_dir") and not args.dry_run:
+    ingest = cfg.get("ingest_dir")
+    if not args.dry_run and (not ingest or not Path(ingest).exists()):
+        if ingest:
+            print(f"Configured ingest folder is missing: {ingest}")
         cfg = cfg_mod.first_run_wizard(cfg)
 
     if tokens:
