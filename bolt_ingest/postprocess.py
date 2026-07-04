@@ -50,7 +50,7 @@ def probe(path: Path):
     return vcodec, acodec, width, height
 
 
-def make_premiere_ready(tmp_path: Path, ingest_dir: Path):
+def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = ""):
     """Returns (final_path, action, vcodec, resolution)."""
     ffmpeg, _ = _ffmpeg_paths()
     vcodec, acodec, w, h = probe(tmp_path)
@@ -61,16 +61,19 @@ def make_premiere_ready(tmp_path: Path, ingest_dir: Path):
         i += 1
 
     audio_args = ["-c:a", "copy"] if acodec in MP4_OK_AUDIO else ["-c:a", "aac", "-b:a", "320k"]
+    # source url travels inside the file, so any clip in Premiere can be traced back
+    meta_args = ["-metadata", f"comment={source_url}"] if source_url else []
 
     if vcodec in REMUXABLE_VIDEO:
         action = "remux"
         cmd = [ffmpeg, "-y", "-v", "error", "-i", str(tmp_path),
-               "-c:v", "copy", *audio_args, "-movflags", "+faststart", str(final)]
+               "-c:v", "copy", *audio_args, *meta_args,
+               "-movflags", "+faststart", str(final)]
     else:
         action = f"transcode ({vcodec or 'unknown'} -> h264)"
         cmd = [ffmpeg, "-y", "-v", "error", "-i", str(tmp_path),
                "-c:v", "libx264", "-crf", "16", "-preset", "fast",
-               "-pix_fmt", "yuv420p", *audio_args,
+               "-pix_fmt", "yuv420p", *audio_args, *meta_args,
                "-movflags", "+faststart", str(final)]
 
     r = subprocess.run(cmd, capture_output=True, text=True)

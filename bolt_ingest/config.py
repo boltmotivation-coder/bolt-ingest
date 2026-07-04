@@ -9,6 +9,8 @@ DEFAULTS = {
     "ingest_dir": "",
     "webhook_url": "",          # optional: Discord webhook for the manifest ping
     "cookies_browser": "",      # optional: "chrome" / "firefox" etc. Needed for Instagram.
+    "handle_seconds": 2,        # extra seconds padded around each timestamp range (trim handles)
+    "whisper_model": "small",   # faster-whisper model for `bolt script` fallback
     "last_ytdlp_update": 0,
 }
 
@@ -48,7 +50,9 @@ def run_config_command(cfg):
     print(f"1. Ingest folder      : {cfg['ingest_dir'] or '(not set)'}")
     print(f"2. Webhook URL        : {cfg['webhook_url'] or '(off)'}")
     print(f"3. Cookies browser    : {cfg['cookies_browser'] or '(off, needed for Instagram)'}")
-    choice = input("Change which? (1/2/3, Enter to exit): ").strip()
+    print(f"4. Trim handles (sec) : {cfg.get('handle_seconds', 2)}")
+    print(f"5. Whisper model      : {cfg.get('whisper_model', 'small')} (tiny/base/small/medium/large-v3)")
+    choice = input("Change which? (1-5, Enter to exit): ").strip()
     if choice == "1":
         p = input("New ingest folder path: ").strip().strip('"').strip("'")
         if p:
@@ -61,5 +65,13 @@ def run_config_command(cfg):
         cfg["cookies_browser"] = input(
             "Browser to pull cookies from (chrome/firefox/edge/safari/brave, blank to disable): "
         ).strip().lower()
+    elif choice == "4":
+        v = input("Seconds of handle padding around each timestamp range [2]: ").strip()
+        if v.isdigit():
+            cfg["handle_seconds"] = int(v)
+    elif choice == "5":
+        v = input("Whisper model (tiny/base/small/medium/large-v3) [small]: ").strip().lower()
+        if v:
+            cfg["whisper_model"] = v
     save(cfg)
     print("Saved.")
