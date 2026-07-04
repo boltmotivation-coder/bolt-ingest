@@ -8,9 +8,8 @@ Strategy (cheapest first):
    has no captions (TikTok / Instagram / most reels). No API keys; the model
    is fetched once on first use.
 
-Outputs, dropped in ingest next to the clips:
-    <Title> [<id>] (script).txt   readable, timestamped dialog lines
-    <Title> [<id>] (script).srt   importable into Premiere as captions
+Output, dropped in ingest next to the clip:
+    <Title> [<id>].txt   readable, timestamped dialog lines
 """
 
 import json
@@ -235,14 +234,6 @@ def _ts(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _srt_ts(sec: float) -> str:
-    ms = int(round(sec * 1000))
-    s, ms = divmod(ms, 1000)
-    m, s = divmod(s, 60)
-    h, m = divmod(m, 60)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
 def format_txt(segs, title: str, url: str, method: str) -> str:
     """Timestamped dialog lines: new line on a pause (>2s) or when a line gets long."""
     paras = []
@@ -263,15 +254,11 @@ def format_txt(segs, title: str, url: str, method: str) -> str:
     return "\n".join(head + body) + "\n"
 
 
-def format_srt(segs) -> str:
-    out = []
-    for i, (start, end, text) in enumerate(segs, 1):
-        out.append(f"{i}\n{_srt_ts(start)} --> {_srt_ts(end)}\n{text}\n")
-    return "\n".join(out)
-
-
 def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg):
-    """Get the transcript for one Source. Returns (txt_path, srt_path, method)."""
+    """Get the transcript for one Source. Returns (txt_path, method).
+
+    The .txt is named after the video so it sits right next to the clip.
+    """
     segs, method, info = fetch_captions(src.url, cfg.get("cookies_browser", ""))
     if not segs:
         print("  No captions on the platform — falling back to local Whisper.")
@@ -282,9 +269,7 @@ def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg):
 
     title = info.get("title", "clip")
     vid = info.get("id", "")
-    base = _sanitize(f"{title} [{vid}] (script)" if vid else f"{title} (script)")
+    base = _sanitize(f"{title} [{vid}]" if vid else title)
     txt_path = ingest_dir / f"{base}.txt"
-    srt_path = ingest_dir / f"{base}.srt"
     txt_path.write_text(format_txt(segs, title, src.url, method), encoding="utf-8")
-    srt_path.write_text(format_srt(segs), encoding="utf-8")
-    return txt_path, srt_path, method
+    return txt_path, method

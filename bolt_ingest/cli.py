@@ -107,38 +107,6 @@ def preview(sources, warnings):
     print()
 
 
-def run_scripts(sources, cfg, ask=input):
-    """`bolt script`: pull the transcript of every source into ingest."""
-    from .transcript import fetch_script
-
-    ingest = Path(cfg["ingest_dir"])
-    tmp = ingest / ".bolt_tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
-
-    ok, failed = 0, []
-    for i, src in enumerate(sources, 1):
-        print(f"\n--- [{i}/{len(sources)}] {src.url}")
-        try:
-            txt, srt, method = fetch_script(src, ingest, tmp, cfg)
-            print(f"  -> {txt.name}  (via {method})")
-            print(f"  -> {srt.name}")
-            ok += 1
-        except Exception as e:
-            msg = str(e).splitlines()[0][:200]
-            print(f"FAILED: {msg}")
-            failed.append({"url": src.url, "error": msg})
-
-    _cleanup_tmp(tmp)
-    if ok:
-        print(f"\nDone. {ok} script(s) in {ingest}")
-    if failed:
-        print(f"\n{len(failed)} source(s) failed:")
-        for f in failed:
-            print(f"  - {f['url']}\n    {f['error']}")
-        return 1
-    return 0
-
-
 def _cleanup_tmp(tmp: Path):
     try:
         for leftover in tmp.iterdir():
@@ -155,7 +123,7 @@ def _login_tip(url: str, cfg):
         print(f"Tip: {site} often needs login cookies. Run `bolt config` and set your browser.")
 
 
-def run(block_text, cfg, dry_run=False, ask=input, mode="download", with_script=False):
+def run(block_text, cfg, dry_run=False, ask=input):
     sources, warnings = parse_block(block_text)
     preview(sources, warnings)
     if not sources:
@@ -164,15 +132,7 @@ def run(block_text, cfg, dry_run=False, ask=input, mode="download", with_script=
         print("(dry run, nothing downloaded)")
         return 0
 
-    if mode == "script":
-        ans = ask(f"Pull {len(sources)} script(s) to {cfg['ingest_dir']}? [Enter = yes, q = cancel]: ").strip().lower()
-        if ans in ("q", "n", "no"):
-            print("Cancelled.")
-            return 0
-        return run_scripts(sources, cfg, ask=ask)
-
-    what = f"{len(sources)} source(s)" + (" + scripts" if with_script else "")
-    ans = ask(f"Download {what} to {cfg['ingest_dir']}? [Enter = yes, q = cancel]: ").strip().lower()
+    ans = ask(f"Download {len(sources)} source(s) to {cfg['ingest_dir']}? [Enter = yes, q = cancel]: ").strip().lower()
     if ans in ("q", "n", "no"):
         print("Cancelled.")
         return 0
@@ -211,15 +171,20 @@ def run(block_text, cfg, dry_run=False, ask=input, mode="download", with_script=
                 "size_mb": size_mb, "action": action,
             })
 
-    if with_script:
+    # adjacent transcript for every source we actually pulled something from
+    if entries:
         from .transcript import fetch_script
-        print("\n=== Scripts ===")
+        print("\n=== Transcripts ===")
+        done_urls = set()
         for src in sources:
+            if src.url in done_urls or not any(e["source_url"] == src.url for e in entries):
+                continue
+            done_urls.add(src.url)
             try:
-                txt, _, method = fetch_script(src, ingest, tmp, cfg)
+                txt, method = fetch_script(src, ingest, tmp, cfg)
                 print(f"  -> {txt.name}  (via {method})")
             except Exception as e:
-                print(f"  script failed for {src.url}: {str(e).splitlines()[0][:150]}")
+                print(f"  (no transcript for {src.url}: {str(e).splitlines()[0][:150]})")
 
     _cleanup_tmp(tmp)
 
@@ -240,14 +205,11 @@ def main():
     ap = argparse.ArgumentParser(
         prog="bolt",
         description="Bolt Motivation footage ingest tool",
-        epilog="Examples:  bolt  |  bolt <url> [<url>...]  |  bolt script [<url>...]  |  "
-               "bolt block.txt  |  bolt config",
+        epilog="Examples:  bolt  |  bolt <url> [<url>...]  |  bolt block.txt  |  bolt config",
     )
     ap.add_argument("input", nargs="*",
-                    help="'script' to pull transcripts, 'config', one or more links, "
-                         "or a .txt file with the research block (default: paste mode)")
-    ap.add_argument("--script", action="store_true",
-                    help="also pull the transcript of every source after downloading")
+                    help="'config', one or more links, or a .txt file with the "
+                         "research block (default: paste mode)")
     ap.add_argument("--dry-run", action="store_true", help="parse and preview only, no downloads")
     ap.add_argument("--no-update", action="store_true", help="skip update checks this run")
     ap.add_argument("--version", action="version", version=f"bolt {__version__}")
@@ -255,11 +217,6 @@ def main():
 
     cfg = cfg_mod.load()
     tokens = list(args.input)
-    mode = "download"
-
-    if tokens and tokens[0].lower() == "script":
-        mode = "script"
-        tokens = tokens[1:]
 
     if tokens and tokens[0].lower() == "config":
         cfg_mod.run_config_command(cfg)
@@ -279,18 +236,18 @@ def main():
         # links pasted straight as arguments
         if all(URL_RE.search(t) for t in tokens):
             block = "\n".join(tokens)
-            return run(block, cfg, dry_run=args.dry_run, mode=mode, with_script=args.script)
+            return run(block, cfg, dry_run=args.dry_run)
         # otherwise a .txt file with the research block
         p = Path(tokens[0])
         if not p.exists():
             print(f"Not a link and not a file: {tokens[0]}")
             return 1
         block = p.read_text(encoding="utf-8", errors="ignore")
-        return run(block, cfg, dry_run=args.dry_run, mode=mode, with_script=args.script)
+        return run(block, cfg, dry_run=args.dry_run)
 
     reader = _StdinReader()
     block = clipboard_or_paste(reader)
-    return run(block, cfg, dry_run=args.dry_run, ask=reader.ask, mode=mode, with_script=args.script)
+    return run(block, cfg, dry_run=args.dry_run, ask=reader.ask)
 
 
 if __name__ == "__main__":

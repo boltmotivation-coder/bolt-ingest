@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bolt-ingest"
-version = "1.1.0"
+version = "1.2.0"
 description = "Bolt Motivation footage ingest tool: paste a Notion research block, get Premiere-ready clips in ingest/"
 requires-python = ">=3.9"
 dependencies = [

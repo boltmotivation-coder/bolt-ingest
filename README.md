@@ -27,26 +27,18 @@ That's it. Every clip lands in `ingest/` as a Premiere-ready MP4 at the highest 
 
 Shortcuts: if the links are already in your clipboard, `bolt` offers them automatically. You can also skip paste mode entirely: `bolt https://youtu.be/xxxx https://tiktok.com/...`
 
-## Scripts / transcripts
+## Transcript on every download
 
-```
-bolt script                    paste links or the whole Notion block, get transcripts
-bolt script <url> [<url>...]   transcripts for specific links
-bolt --script                  normal download run + transcripts for every source
-```
+Every clip gets a matching `Title [id].txt` right next to it — a clean, timestamped, readable transcript of the video. No extra command, it just happens.
 
-Each video produces two files in `ingest/`, named after the video:
-
-- `Title [id] (script).txt` — clean, timestamped dialog lines, readable script format
-- `Title [id] (script).srt` — drop straight into Premiere as captions
-
-It grabs the platform's captions when they exist (instant, free). If there are none (TikTok, IG, most reels), it transcribes locally with Whisper — no API keys, nothing to set up; the model downloads once on first use.
+It grabs the platform's captions when they exist (instant, free). If there are none (TikTok, IG, most reels), it transcribes locally with Whisper — no API keys, nothing to set up; the model downloads once on first use. If a video has no speech at all, it just skips the transcript and keeps the clip.
 
 ## What it does under the hood
 
 - Always downloads the true best video + audio streams (yt-dlp), on YouTube, TikTok, Instagram, and ~1800 other sites — sorted to prefer the highest-bitrate variant at the top resolution
 - `00:00-00:00` timestamps = full video. Real ranges = only those sections get downloaded, padded with 2s trim handles on each side (change in `bolt config`)
 - Auto-converts anything Premiere can't read (VP9 -> high-quality H.264, opus audio -> AAC). H.264/AV1 sources are remuxed losslessly
+- Drops a readable `.txt` transcript next to every clip (captions when they exist, local Whisper otherwise)
 - Embeds the source URL in each MP4's metadata, so any clip in Premiere can be traced back
 - Updates itself and yt-dlp automatically, you never reinstall anything
 - Writes a manifest of every pull to `ingest/_manifests/`
@@ -56,8 +48,6 @@ It grabs the platform's captions when they exist (instant, free). If there are n
 ```
 bolt                    paste mode (the normal way; offers clipboard contents if links are there)
 bolt <url> [<url>...]   download links directly, no pasting
-bolt script [<url>...]  transcripts only (see above)
-bolt --script           download + transcripts
 bolt block.txt          read the research block from a file
 bolt --dry-run          preview what would be downloaded, download nothing
 bolt config             ingest folder / webhook / cookies / handles / whisper model
