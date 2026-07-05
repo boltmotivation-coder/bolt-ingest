@@ -162,10 +162,17 @@ def _ensure_faster_whisper():
     except ImportError:
         pass
     print("  First-time setup: installing faster-whisper (one-off, ~100 MB, a minute or two)...")
+    # NOTE: no `pipx inject` here — it deadlocks when bolt itself is running
+    # from the pipx venv it tries to modify. ensurepip + pip works everywhere.
     cmds = [
         [sys.executable, "-m", "pip", "install", "-q", "faster-whisper"],
-        ["pipx", "inject", "bolt-ingest", "faster-whisper"],
+        ["pipx", "runpip", "bolt-ingest", "install", "-q", "faster-whisper"],
     ]
+    try:
+        subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"],
+                       capture_output=True, timeout=120)
+    except Exception:
+        pass
     for cmd in cmds:
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -208,7 +215,7 @@ def whisper_transcribe(url: str, tmp_dir: Path, cfg):
     if not _ensure_faster_whisper():
         raise RuntimeError(
             "Could not install faster-whisper automatically. "
-            "Run: pipx inject bolt-ingest faster-whisper"
+            "Run: pipx runpip bolt-ingest install faster-whisper"
         )
     from faster_whisper import WhisperModel
 
