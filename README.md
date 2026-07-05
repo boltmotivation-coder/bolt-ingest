@@ -27,6 +27,8 @@ Documents/
 
 bolt looks for `Documents/Working Folder/INGEST` first. If you keep your ingest folder somewhere else, it'll still find a folder named `INGEST`/`ingest` under Documents, Desktop, Downloads, or Movies and offer that instead.
 
+**Don't care about the layout?** On first run you can just press `d` to use your Downloads folder, or type/paste/drag any folder you want. Change it later anytime with `bolt config` → option 1 (you can drag a folder straight into the Terminal there too).
+
 ## Daily use
 
 1. Open Terminal / PowerShell

@@ -1,9 +1,22 @@
 import json
 import os
+import re
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".bolt"
 CONFIG_PATH = CONFIG_DIR / "config.json"
+
+
+def _clean_path(raw: str) -> str:
+    """Tidy a pasted/typed/dragged folder path.
+
+    Handles surrounding quotes and, on macOS/Linux, the backslash-escaped
+    spaces you get when you drag a folder into the Terminal.
+    """
+    s = raw.strip().strip('"').strip("'").strip()
+    if os.name != "nt":  # don't touch Windows path separators
+        s = re.sub(r"\\([ ()&'\"])", r"\1", s)
+    return s
 
 DEFAULTS = {
     "ingest_dir": "",
@@ -127,31 +140,36 @@ def save(cfg):
 
 def first_run_wizard(cfg):
     print("\n== bolt first-time setup ==")
+    print("Where should bolt save your downloads?\n")
     found = find_ingest_dir()
 
     if found:
-        print(f"Found your ingest folder:  {found}")
-        ans = input("Use it? [Enter = yes / or paste a different path]: ").strip().strip('"').strip("'")
+        print(f"Found a folder that looks right:  {found}\n")
+        ans = _clean_path(input("Use it? [Enter = yes / or type/paste/drag another folder]: "))
         ingest = Path(os.path.expanduser(ans or str(found))).resolve()
     else:
         wf, ingest_rec, projects_rec = recommended_paths()
-        print("Didn't find an ingest folder. bolt's recommended layout is:\n")
-        print(f"   {wf}")
-        print( "       INGEST/     <- downloads land here (safe to clear out anytime)")
-        print( "       PROJECTS/   <- your actual edits\n")
-        ans = input("Set that up for me? [Enter = yes / or paste your own ingest path]: ").strip().strip('"').strip("'")
-        if ans:
-            ingest = Path(os.path.expanduser(ans)).resolve()
-        else:
+        downloads = Path.home() / "Downloads"
+        print("Pick one — or just type, paste, or drag any folder you want:\n")
+        print(f"  [Enter]   Recommended editor layout   {wf}")
+        print( "                                        (makes INGEST/ for footage + PROJECTS/ for edits)")
+        print(f"  d         Just use my Downloads        {downloads}")
+        print( "  <folder>  Any path you type/paste/drag\n")
+        ans = _clean_path(input("Your choice: "))
+        if not ans:
             projects_rec.mkdir(parents=True, exist_ok=True)
             ingest = ingest_rec
             print(f"Created {wf} with INGEST/ and PROJECTS/.")
+        elif ans.lower() == "d":
+            ingest = downloads
+        else:
+            ingest = Path(os.path.expanduser(ans)).resolve()
 
     ingest.mkdir(parents=True, exist_ok=True)
     cfg["ingest_dir"] = str(ingest)
     save(cfg)
-    print(f"Saved. Downloads will go to: {ingest}")
-    print("(Change anytime with: bolt config)\n")
+    print(f"\nSaved. Downloads will go to: {ingest}")
+    print("Change this anytime with:  bolt config\n")
     return cfg
 
 
@@ -164,11 +182,12 @@ def run_config_command(cfg):
     print(f"5. Whisper model      : {cfg.get('whisper_model', 'small')} (tiny/base/small/medium/large-v3)")
     choice = input("Change which? (1-5, Enter to exit): ").strip()
     if choice == "1":
-        p = input("New ingest folder path: ").strip().strip('"').strip("'")
+        p = _clean_path(input("New download folder (type, paste, or drag it here): "))
         if p:
             ingest = Path(os.path.expanduser(p)).resolve()
             ingest.mkdir(parents=True, exist_ok=True)
             cfg["ingest_dir"] = str(ingest)
+            print(f"Downloads will now go to: {ingest}")
     elif choice == "2":
         cfg["webhook_url"] = input("Webhook URL (blank to disable): ").strip()
     elif choice == "3":
