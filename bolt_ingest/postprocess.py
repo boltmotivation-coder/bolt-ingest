@@ -23,6 +23,7 @@ def _ffmpeg_paths():
         return ff, fp
     try:
         import static_ffmpeg
+        print("  First-time setup: downloading ffmpeg (one-off, ~80 MB, a minute or two)...")
         static_ffmpeg.add_paths()
         return shutil.which("ffmpeg"), shutil.which("ffprobe")
     except Exception:
@@ -71,6 +72,8 @@ def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = ""):
                "-movflags", "+faststart", str(final)]
     else:
         action = f"transcode ({vcodec or 'unknown'} -> h264)"
+        print(f"  Converting {vcodec or 'unknown'} -> H.264 for Premiere "
+              "(normal for YouTube 4K; can take a few minutes on long clips)...")
         cmd = [ffmpeg, "-y", "-v", "error", "-i", str(tmp_path),
                "-c:v", "libx264", "-crf", "16", "-preset", "fast",
                "-pix_fmt", "yuv420p", *audio_args, *meta_args,

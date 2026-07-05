@@ -47,6 +47,8 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
             padded = (max(0, rng[0] - handle_seconds), rng[1] + handle_seconds)
             opts["download_ranges"] = download_range_func(None, [padded])
             opts["force_keyframes_at_cuts"] = True
+            print(f"  Grabbing section {seconds_to_tag(rng[0])}-{seconds_to_tag(rng[1])} "
+                  "(sections need clean cut points, so this takes longer than the clip length)...")
         if cookies_browser:
             opts["cookiesfrombrowser"] = (cookies_browser,)
 
@@ -72,13 +74,14 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
                 raise
             print("  Blocked by YouTube on this network — retrying via mobile clients...")
             info, path = _grab({**opts, "extractor_args": {"youtube": {"player_client": ["android", "ios"]}}})
-            results.append({
-                "path": path,
-                "title": info.get("title", "clip"),
-                "id": info.get("id", ""),
-                "range": rng,
-                "source_url": src.url,
-                "notes": src.notes,
-                "extractor": info.get("extractor_key", ""),
-            })
+
+        results.append({
+            "path": path,
+            "title": info.get("title", "clip"),
+            "id": info.get("id", ""),
+            "range": rng,
+            "source_url": src.url,
+            "notes": src.notes,
+            "extractor": info.get("extractor_key", ""),
+        })
     return results

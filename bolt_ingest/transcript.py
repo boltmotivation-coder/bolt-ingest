@@ -161,7 +161,7 @@ def _ensure_faster_whisper():
         return True
     except ImportError:
         pass
-    print("  First-time setup: installing faster-whisper (one-off, ~100 MB)...")
+    print("  First-time setup: installing faster-whisper (one-off, ~100 MB, a minute or two)...")
     cmds = [
         [sys.executable, "-m", "pip", "install", "-q", "faster-whisper"],
         ["pipx", "inject", "bolt-ingest", "faster-whisper"],
@@ -212,10 +212,12 @@ def whisper_transcribe(url: str, tmp_dir: Path, cfg):
         )
     from faster_whisper import WhisperModel
 
+    print("  Downloading the audio track for transcription...")
     audio = _download_audio(url, tmp_dir, cfg.get("cookies_browser", ""))
     model_name = cfg.get("whisper_model", "small")
     print(f"  Transcribing locally with Whisper ({model_name})... "
-          "(first run downloads the model, then it's cached)")
+          "(first run downloads the model once, ~500 MB; transcribing runs at "
+          "roughly the video's own length)")
     model = WhisperModel(model_name, device="auto", compute_type="int8")
     segments, _ = model.transcribe(str(audio), vad_filter=True)
     segs = [[s.start, s.end, s.text.strip()] for s in segments if s.text.strip()]
@@ -259,6 +261,7 @@ def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg):
 
     The .txt is named after the video so it sits right next to the clip.
     """
+    print(f"  Checking for platform captions ({src.url})...")
     segs, method, info = fetch_captions(src.url, cfg.get("cookies_browser", ""))
     if not segs:
         print("  No captions on the platform — falling back to local Whisper.")

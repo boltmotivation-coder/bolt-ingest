@@ -160,7 +160,18 @@ def run(block_text, cfg, dry_run=False, ask=input):
             continue
 
         for d in downloads:
-            final, action, vcodec, res = make_premiere_ready(d["path"], ingest, d["source_url"])
+            try:
+                final, action, vcodec, res = make_premiere_ready(d["path"], ingest, d["source_url"])
+            except Exception as e:
+                # never lose footage: hand the raw file over and keep going
+                raw = ingest / d["path"].name
+                try:
+                    d["path"].replace(raw)
+                    print(f"  Convert failed ({str(e).splitlines()[0][:120]}) — kept the raw file: {raw.name}")
+                except OSError:
+                    print(f"  Convert failed ({str(e).splitlines()[0][:120]})")
+                failed.append({"url": d["source_url"], "error": f"convert failed: {str(e).splitlines()[0][:150]}"})
+                continue
             size_mb = round(final.stat().st_size / 1_048_576, 1)
             rng = _fmt_range(d["range"]) if d["range"] else ""
             print(f"  -> {final.name}  ({res}, {vcodec}, {size_mb} MB, {action})")

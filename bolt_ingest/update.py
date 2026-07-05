@@ -33,7 +33,7 @@ def self_update():
     remote = _remote_version()
     if not remote or _ver_tuple(remote) <= _ver_tuple(__version__):
         return
-    print(f"Updating bolt {__version__} -> {remote} ...")
+    print(f"New bolt version available — updating {__version__} -> {remote} (takes ~30s, one-off)...")
     cmds = [
         ["pipx", "upgrade", "bolt-ingest"],
         ["pipx", "install", "--force", GIT_URL],
@@ -58,7 +58,7 @@ def update_ytdlp(cfg):
     now = time.time()
     if now - cfg.get("last_ytdlp_update", 0) < 86400:
         return
-    print("Checking yt-dlp for updates (once a day)...")
+    print("Keeping yt-dlp fresh (daily check, a few seconds)...")
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "-q", "--upgrade", "yt-dlp"],

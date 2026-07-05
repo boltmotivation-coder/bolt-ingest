@@ -38,6 +38,8 @@ bolt looks for `Documents/Working Folder/INGEST` first. If you keep your ingest 
 
 That's it. Every clip lands in `ingest/` as a Premiere-ready MP4 at the highest quality that exists for that video.
 
+**The very first run is slower than normal** — bolt fetches its own ffmpeg (~80 MB) and, the first time a video has no captions, the Whisper transcription model (~500 MB). It says so on screen when it happens; after that everything is cached and fast. Also normal: 4K YouTube clips convert to H.264 after downloading (a few minutes for long ones), and timestamped sections take longer than their length suggests because bolt cuts them on clean frames.
+
 Shortcuts: if the links are already in your clipboard, `bolt` offers them automatically. You can also skip paste mode entirely: `bolt https://youtu.be/xxxx https://tiktok.com/...`
 
 ## Transcript on every download
