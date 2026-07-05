@@ -1,4 +1,4 @@
-__version__ = "1.7.1"
+__version__ = "1.7.2"
 
 # Change this ONE line after you create your GitHub repo.
 # Format: "your-github-username/bolt-ingest"

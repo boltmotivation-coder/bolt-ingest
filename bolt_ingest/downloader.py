@@ -72,8 +72,18 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
                          or "ffmpeg exited" in msg)  # range fetches surface the 403 this way
             if not retriable or "youtu" not in src.url.lower():
                 raise
-            print("  Blocked by YouTube on this network — retrying via mobile clients...")
-            info, path = _grab({**opts, "extractor_args": {"youtube": {"player_client": ["android", "ios"]}}})
+            # mid-download 403s are usually expired/rotated stream URLs; a plain
+            # retry with fresh URLs keeps full quality, so try that first
+            print("  Blocked by YouTube mid-download - retrying with fresh stream URLs...")
+            try:
+                info, path = _grab(opts)
+            except Exception:
+                print("  Still blocked - falling back to mobile clients (may cap the resolution)...")
+                info, path = _grab({**opts, "extractor_args": {"youtube": {"player_client": ["android", "ios"]}}})
+                h = info.get("height") or 0
+                if h and h < 720:
+                    print(f"  WARNING: only got {h}p for this one - YouTube limited the backup route. "
+                          "Rerun bolt on this link later (or after a VPN switch) for full quality.")
 
         results.append({
             "path": path,
