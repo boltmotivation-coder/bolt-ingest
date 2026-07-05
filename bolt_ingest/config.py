@@ -138,6 +138,30 @@ def save(cfg):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
 
+def _ask_path(prompt: str) -> str:
+    """input() that shrugs off leftover research-block lines still queued in the
+    console after a botched paste (they'd otherwise become 'folder paths')."""
+    from .parser import looks_like_template_junk
+    ans = input(prompt)
+    if ans.strip() and looks_like_template_junk(ans):
+        print("(that looks like leftover pasted text, not a folder - using the default)")
+        return ""
+    return _clean_path(ans)
+
+
+def _make_dir(candidate: str, fallback: Path) -> Path:
+    """Resolve + create the chosen folder; on any bad path, fall back safely
+    instead of crashing (Windows raises on characters like * : ` in paths)."""
+    try:
+        p = Path(os.path.expanduser(candidate)).resolve() if candidate else fallback
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    except (OSError, ValueError):
+        print(f"Couldn't use \"{candidate[:60]}\" as a folder - using {fallback} instead.")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 def first_run_wizard(cfg):
     print("\n== bolt first-time setup ==")
     print("Where should bolt save your downloads?\n")
@@ -145,8 +169,8 @@ def first_run_wizard(cfg):
 
     if found:
         print(f"Found a folder that looks right:  {found}\n")
-        ans = _clean_path(input("Use it? [Enter = yes / or type/paste/drag another folder]: "))
-        ingest = Path(os.path.expanduser(ans or str(found))).resolve()
+        ans = _ask_path("Use it? [Enter = yes / or type/paste/drag another folder]: ")
+        ingest = _make_dir(ans, found)
     else:
         wf, ingest_rec, projects_rec = recommended_paths()
         downloads = Path.home() / "Downloads"
@@ -155,17 +179,19 @@ def first_run_wizard(cfg):
         print( "                                        (makes INGEST/ for footage + PROJECTS/ for edits)")
         print(f"  d         Just use my Downloads        {downloads}")
         print( "  <folder>  Any path you type/paste/drag\n")
-        ans = _clean_path(input("Your choice: "))
+        ans = _ask_path("Your choice: ")
         if not ans:
-            projects_rec.mkdir(parents=True, exist_ok=True)
-            ingest = ingest_rec
-            print(f"Created {wf} with INGEST/ and PROJECTS/.")
+            try:
+                projects_rec.mkdir(parents=True, exist_ok=True)
+                print(f"Created {wf} with INGEST/ and PROJECTS/.")
+            except OSError:
+                pass
+            ingest = _make_dir("", ingest_rec)
         elif ans.lower() == "d":
-            ingest = downloads
+            ingest = _make_dir("", downloads)
         else:
-            ingest = Path(os.path.expanduser(ans)).resolve()
+            ingest = _make_dir(ans, ingest_rec)
 
-    ingest.mkdir(parents=True, exist_ok=True)
     cfg["ingest_dir"] = str(ingest)
     save(cfg)
     print(f"\nSaved. Downloads will go to: {ingest}")
@@ -182,10 +208,9 @@ def run_config_command(cfg):
     print(f"5. Whisper model      : {cfg.get('whisper_model', 'small')} (tiny/base/small/medium/large-v3)")
     choice = input("Change which? (1-5, Enter to exit): ").strip()
     if choice == "1":
-        p = _clean_path(input("New download folder (type, paste, or drag it here): "))
+        p = _ask_path("New download folder (type, paste, or drag it here): ")
         if p:
-            ingest = Path(os.path.expanduser(p)).resolve()
-            ingest.mkdir(parents=True, exist_ok=True)
+            ingest = _make_dir(p, Path(cfg["ingest_dir"]) if cfg["ingest_dir"] else Path.home() / "Downloads")
             cfg["ingest_dir"] = str(ingest)
             print(f"Downloads will now go to: {ingest}")
     elif choice == "2":

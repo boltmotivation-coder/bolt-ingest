@@ -44,6 +44,19 @@ def _ignored(url: str) -> bool:
     return any(h in url.lower() for h in _IGNORE_HOSTS)
 
 
+_TEMPLATE_WORDS = ("source url", "timestamp", "upscale", "notes:", "new source")
+
+
+def looks_like_template_junk(text: str) -> bool:
+    """True if `text` is clearly a stray line from a pasted research block —
+    used to shield interactive prompts from paste fallout."""
+    low = text.lower()
+    return (any(w in low for w in _TEMPLATE_WORDS)
+            or "**" in text or low.startswith(("*", "`"))
+            or "http://" in low or "https://" in low
+            or RANGE_RE.search(text) is not None)
+
+
 @dataclass
 class Source:
     url: str = ""

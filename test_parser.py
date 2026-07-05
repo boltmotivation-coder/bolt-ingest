@@ -61,6 +61,14 @@ check("duplicates removed", len(srcs5) == 1 and any("Duplicate" in w for w in w5
 srcs6, w6 = parse_block("Rules (for it to work)\n1. New Source button for every link.")
 check("no urls -> empty + warning", srcs6 == [] and any("No source URLs" in w for w in w6))
 
+# 7. Junk detector that guards interactive prompts
+from bolt_ingest.parser import looks_like_template_junk
+for junk in ["**`Timestamps (optional):** 00:00–00:00`", "*Notes:*",
+             "**Source URL:** https://youtu.be/x", "0:17-0:40, 1:20-1:35"]:
+    check(f"junk detected: {junk[:30]}", looks_like_template_junk(junk))
+for ok in ["", "d", r"C:\Users\Admin\Documents\Working Folder\INGEST", "/Users/ed/clips"]:
+    check(f"not junk: {ok or '(empty)'}", not looks_like_template_junk(ok))
+
 print()
 if FAILED:
     print(f"{len(FAILED)} FAILED: {FAILED}")

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from . import config as cfg_mod
-from .parser import parse_block, seconds_to_tag, URL_RE
+from .parser import parse_block, seconds_to_tag, looks_like_template_junk, URL_RE
 
 
 class _StdinReader:
@@ -256,9 +256,18 @@ def main():
         # for links (handles `bolt <url> <url>` AND a Notion line pasted right
         # after the word bolt, markdown junk and all)
         block = "\n".join(tokens)
+        # If the args look like a research-block paste that the shell chopped up
+        # (PowerShell runs each pasted line separately and refuses lines with &),
+        # the FULL block is still in the clipboard — rescue it from there.
+        if any(looks_like_template_junk(t) and not URL_RE.search(t) for t in tokens):
+            clip = _read_clipboard()
+            if len(URL_RE.findall(clip)) > len(URL_RE.findall(block)):
+                print("Looks like the shell split up your paste - using the full block "
+                      "from your clipboard instead.")
+                block = clip
         if URL_RE.search(block):
             return run(block, cfg, dry_run=args.dry_run)
-        print("No links found in what you typed — switching to paste mode.")
+        print("No links found in what you typed - switching to paste mode.")
 
     reader = _StdinReader()
     block = clipboard_or_paste(reader)
