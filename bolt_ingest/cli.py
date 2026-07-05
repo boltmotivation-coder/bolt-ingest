@@ -247,17 +247,18 @@ def main():
         cfg = cfg_mod.first_run_wizard(cfg)
 
     if tokens:
-        # links pasted straight as arguments
-        if all(URL_RE.search(t) for t in tokens):
-            block = "\n".join(tokens)
-            return run(block, cfg, dry_run=args.dry_run)
-        # otherwise a .txt file with the research block
+        # a .txt file with the research block
         p = Path(tokens[0])
-        if not p.exists():
-            print(f"Not a link and not a file: {tokens[0]}")
-            return 1
-        block = p.read_text(encoding="utf-8", errors="ignore")
-        return run(block, cfg, dry_run=args.dry_run)
+        if len(tokens) == 1 and p.exists() and p.is_file():
+            block = p.read_text(encoding="utf-8", errors="ignore")
+            return run(block, cfg, dry_run=args.dry_run)
+        # anything else: treat the whole arg string as pasted text and mine it
+        # for links (handles `bolt <url> <url>` AND a Notion line pasted right
+        # after the word bolt, markdown junk and all)
+        block = "\n".join(tokens)
+        if URL_RE.search(block):
+            return run(block, cfg, dry_run=args.dry_run)
+        print("No links found in what you typed — switching to paste mode.")
 
     reader = _StdinReader()
     block = clipboard_or_paste(reader)

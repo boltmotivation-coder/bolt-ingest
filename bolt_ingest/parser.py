@@ -21,8 +21,27 @@ from dataclasses import dataclass, field
 _DASH = r"[-\u2013\u2014]"
 _TIME = r"\d{1,2}(?::\d{1,2}){1,2}"  # M:SS, MM:SS, H:MM:SS
 RANGE_RE = re.compile(rf"({_TIME})\s*{_DASH}\s*({_TIME})")
-URL_RE = re.compile(r"https?://[^\s<>\"'\)\]]+")
-_LIST_PREFIX = re.compile(r"^\s*(?:\d+[.)]|[-\u2022*>])\s*")
+URL_RE = re.compile(r"https?://[^\s<>\"'\)\]`*]+")
+_LIST_PREFIX = re.compile(r"^\s*(?:\d+[.)]|[-\u2022*>#]+)\s*")
+
+# domains that show up in a Notion copy but are never footage
+_IGNORE_HOSTS = ("notion.so", "notion.site", "notion-static.com")
+
+
+def _clean_line(raw: str) -> str:
+    """Strip markdown formatting Notion adds when copying as markdown/rich text."""
+    line = raw.replace("`", "").replace("**", "").replace("__", "")
+    line = _LIST_PREFIX.sub("", line).strip()
+    # emphasis wrappers like *Notes:* or _Notes:_
+    return line.strip("*_ \t")
+
+
+def _clean_url(url: str) -> str:
+    return url.rstrip(".,;:!?*_`")
+
+
+def _ignored(url: str) -> bool:
+    return any(h in url.lower() for h in _IGNORE_HOSTS)
 
 
 @dataclass
@@ -68,21 +87,22 @@ def parse_block(text: str):
     current = None
     awaiting_url = False
     in_notes = False
+    _pending_label = ""
 
     for raw in text.splitlines():
-        line = _LIST_PREFIX.sub("", raw).strip()
+        line = _clean_line(raw)
         if not line:
             in_notes = False
             continue
         low = line.lower()
-        urls = URL_RE.findall(line)
+        urls = [u for u in map(_clean_url, URL_RE.findall(line)) if not _ignored(u)]
 
         # --- New source starts ---
         if low.startswith("source url"):
             if current is not None and current.url:
                 sources.append(current)
             elif current is not None and not current.url:
-                warnings.append("Found a 'Source URL:' block with no link in it. Skipped.")
+                warnings.append(f"'Source URL:' block with no actual link (pasted as text?): \"{_pending_label or '?'}\". Skipped.")
             current = Source()
             in_notes = False
             if urls:
@@ -90,6 +110,9 @@ def parse_block(text: str):
                 awaiting_url = False
             else:
                 awaiting_url = True
+                # remember the human-readable label (e.g. embed pasted as a title)
+                label = line.split(":", 1)[1].strip() if ":" in line else ""
+                _pending_label = label[:80]
             continue
 
         # URL on its own line (Notion sometimes wraps the link to the next line)
@@ -134,7 +157,7 @@ def parse_block(text: str):
         if current.url:
             sources.append(current)
         else:
-            warnings.append("Last 'Source URL:' block had no link. Skipped.")
+            warnings.append(f"'Source URL:' block with no actual link (pasted as text?): \"{_pending_label or '?'}\". Skipped.")
 
     if not sources:
         warnings.append("No source URLs found in what you pasted.")

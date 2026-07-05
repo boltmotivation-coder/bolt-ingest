@@ -43,11 +43,16 @@ def self_update():
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if r.returncode == 0:
-                print("Updated. Restarting...")
+                print("Updated. Restarting...\n")
                 env = dict(os.environ, BOLT_UPDATED="1")
-                os.execvpe(sys.argv[0], sys.argv, env)
+                # os.exec* is unreliable on Windows consoles (child and shell
+                # fight over the terminal). A plain child process works everywhere.
+                child = [sys.executable, "-m", "bolt_ingest.cli"] + sys.argv[1:]
+                sys.exit(subprocess.call(child, env=env))
         except FileNotFoundError:
             continue
+        except SystemExit:
+            raise
         except Exception:
             break
     print("Auto-update failed (not a big deal), continuing with current version.")
