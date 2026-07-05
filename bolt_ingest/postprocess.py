@@ -5,6 +5,11 @@ Logic:
 - av1 video   -> remux to MP4 (Premiere 23.3+ decodes AV1; config can force transcode)
 - vp9 / other -> transcode to high-quality H.264 (CRF 16), negligible loss pre-Topaz
 - opus/vorbis audio -> re-encode to AAC 320k (MP4 + Premiere don't like opus)
+- VFR video   -> ALWAYS transcode to constant frame rate, even if the codec is
+  remuxable. VFR breaks the Topaz panel's frame-count/credit estimate (job
+  aborts) and causes audio drift + janky scrubbing in Premiere. The output is
+  snapped to the nearest standard frame rate (29.97, 60, ...) so every clip in
+  ingest is CFR-verified.
 """
 
 import json
@@ -30,25 +35,61 @@ def _ffmpeg_paths():
         return ff, fp
 
 
+# standard editing/delivery frame rates VFR footage gets snapped to
+_STANDARD_FPS = [
+    ("24000/1001", 23.976), ("24", 24.0), ("25", 25.0),
+    ("30000/1001", 29.97), ("30", 30.0), ("48", 48.0), ("50", 50.0),
+    ("60000/1001", 59.94), ("60", 60.0), ("120", 120.0),
+]
+
+
+def _fps_float(s: str) -> float:
+    try:
+        if "/" in s:
+            n, d = s.split("/", 1)
+            return float(n) / float(d) if float(d) else 0.0
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _snap_fps(avg: float) -> str:
+    """Nearest standard frame rate as an exact ffmpeg fraction. VFR web footage
+    often averages a little under its nominal rate (dropped frames), so the
+    match tolerance is loose; anything truly nonstandard passes through as-is."""
+    exact, val = min(_STANDARD_FPS, key=lambda t: abs(t[1] - avg))
+    if abs(val - avg) / val <= 0.06:
+        return exact
+    return f"{avg:.3f}"
+
+
 def probe(path: Path):
     _, ffprobe = _ffmpeg_paths()
     r = subprocess.run(
         [ffprobe, "-v", "error", "-show_entries",
-         "stream=codec_type,codec_name,width,height", "-of", "json", str(path)],
+         "stream=codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate",
+         "-of", "json", str(path)],
         capture_output=True, text=True,
     )
     vcodec = acodec = ""
     width = height = 0
+    rfps = afps = 0.0
     try:
         for s in json.loads(r.stdout).get("streams", []):
             if s.get("codec_type") == "video" and not vcodec:
                 vcodec = s.get("codec_name", "")
                 width, height = s.get("width", 0), s.get("height", 0)
+                rfps = _fps_float(s.get("r_frame_rate", ""))
+                afps = _fps_float(s.get("avg_frame_rate", ""))
             elif s.get("codec_type") == "audio" and not acodec:
                 acodec = s.get("codec_name", "")
     except Exception:
         pass
-    return vcodec, acodec, width, height
+    # VFR when the container's nominal tick rate and the real average disagree.
+    # Missing/zero rates can't be judged, so they pass as CFR rather than force
+    # a lossy re-encode on a guess.
+    is_vfr = bool(rfps and afps and abs(rfps - afps) / max(rfps, afps) > 0.01)
+    return vcodec, acodec, width, height, is_vfr, afps
 
 
 def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = "",
@@ -59,7 +100,7 @@ def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = "",
     existing file of the same name (used when re-grabbing at better quality).
     """
     ffmpeg, _ = _ffmpeg_paths()
-    vcodec, acodec, w, h = probe(tmp_path)
+    vcodec, acodec, w, h, is_vfr, afps = probe(tmp_path)
     stem = final_stem or tmp_path.stem
     final = ingest_dir / f"{stem}.mp4"
     if not overwrite:
@@ -72,7 +113,20 @@ def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = "",
     # source url travels inside the file, so any clip in Premiere can be traced back
     meta_args = ["-metadata", f"comment={source_url}"] if source_url else []
 
-    if vcodec in REMUXABLE_VIDEO:
+    if is_vfr:
+        # remuxing keeps the variable timing, so VFR always re-encodes -
+        # even h264/av1 that would otherwise stream-copy
+        fps = _snap_fps(afps)
+        fps_label = f"{round(_fps_float(fps), 2):g}"
+        action = f"transcode (vfr {vcodec or 'unknown'} -> cfr h264 @ {fps_label})"
+        print(f"  Variable frame rate detected - converting to constant {fps_label} fps "
+              "so Topaz/Premiere behave (can take a few minutes on long clips)...")
+        cmd = [ffmpeg, "-y", "-v", "error", "-i", str(tmp_path),
+               "-fps_mode", "cfr", "-r", fps,
+               "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+               "-pix_fmt", "yuv420p", *audio_args, *meta_args,
+               "-movflags", "+faststart", str(final)]
+    elif vcodec in REMUXABLE_VIDEO:
         action = "remux"
         cmd = [ffmpeg, "-y", "-v", "error", "-i", str(tmp_path),
                "-c:v", "copy", *audio_args, *meta_args,

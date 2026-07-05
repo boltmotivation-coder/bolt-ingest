@@ -53,6 +53,7 @@ It grabs the platform's captions when they exist (instant, free). If there are n
 - Always downloads the true best video + audio streams (yt-dlp), on YouTube, TikTok, Instagram, and ~1800 other sites — sorted to prefer the highest-bitrate variant at the top resolution
 - `00:00-00:00` timestamps = full video. Real ranges = only those sections get downloaded, padded with 2s trim handles on each side (change in `bolt config`)
 - Auto-converts anything Premiere can't read (VP9 -> high-quality H.264, opus audio -> AAC). H.264/AV1 sources are remuxed losslessly
+- Detects variable frame rate footage (Twitch/TikTok/IG, screen recordings) and converts it to constant frame rate at the nearest standard rate — VFR breaks Topaz upscaling and causes audio drift in Premiere. Clean CFR files are never re-encoded. The manifest logs which clips were converted (`action: transcode (vfr ...)`)
 - Drops a readable `.txt` transcript next to every clip (captions when they exist, local Whisper otherwise)
 - Embeds the source URL in each MP4's metadata, so any clip in Premiere can be traced back
 - Updates itself and yt-dlp automatically, you never reinstall anything
