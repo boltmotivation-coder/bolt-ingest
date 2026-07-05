@@ -15,6 +15,7 @@ def _section_heartbeat(tmp_dir: Path, interval: int = 15):
 
     def _watch():
         last = -1
+        stalls = 0
         while not stop.wait(interval):
             try:
                 size = sum(f.stat().st_size for f in tmp_dir.iterdir() if f.is_file())
@@ -22,11 +23,16 @@ def _section_heartbeat(tmp_dir: Path, interval: int = 15):
                 continue
             mb = size / 1_000_000
             if size > last:
+                stalls = 0
                 print(f"  ...still downloading - {mb:.0f} MB so far (no progress bar on sections; "
                       "clips appear in the ingest folder when finished)")
             else:
-                print(f"  ...still working ({mb:.0f} MB so far) - if this line repeats for several "
-                      "minutes with the same number, Ctrl+C and rerun bolt")
+                stalls += 1
+                if stalls >= 6:  # ~90s with zero progress = genuinely stuck
+                    print(f"  ...NO progress for ~{stalls * interval}s ({mb:.0f} MB) - looks stuck "
+                          "(often a VPN stall). Press Ctrl+C and rerun bolt; it skips finished clips.")
+                else:
+                    print(f"  ...still working ({mb:.0f} MB so far)...")
             last = size
 
     t = threading.Thread(target=_watch, daemon=True)
@@ -88,6 +94,9 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
             "retries": 5,
             "fragment_retries": 5,
             "concurrent_fragment_downloads": 8,
+            # a stalled socket over a flaky VPN must error out (and hit the retry
+            # logic) instead of hanging the whole download forever
+            "socket_timeout": 30,
             "restrictfilenames": False,
             "windowsfilenames": True,
             "quiet": False,
@@ -96,11 +105,16 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
         if rng:
             padded = (max(0, rng[0] - handle_seconds), rng[1] + handle_seconds)
             opts["download_ranges"] = download_range_func(None, [padded])
-            opts["force_keyframes_at_cuts"] = True
+            # NOTE: deliberately NOT setting force_keyframes_at_cuts. That flag
+            # routes the section fetch through an ffmpeg subprocess that reads the
+            # stream directly with no read timeout - over a high-latency VPN it
+            # stalls forever at 0 bytes. Native range download only grabs the
+            # fragments overlapping the range, honors socket_timeout/retries, and
+            # can't hang like that. Cuts land on keyframes instead of frame-exact,
+            # but every range is padded with handles above, so editors trim clean.
             print(f"  Grabbing section {seconds_to_tag(rng[0])}-{seconds_to_tag(rng[1])} "
-                  "(sections need clean cut points, so this takes longer than the clip length).\n"
-                  "  Heads up: sections show no progress bar - bolt will report in every 15s so "
-                  "you know it's alive...")
+                  "(downloads just this slice; no progress bar, so bolt reports in "
+                  "every 15s to show it's alive)...")
         if cookies_browser:
             opts["cookiesfrombrowser"] = (cookies_browser,)
 
@@ -127,7 +141,8 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
             msg = str(e)
             retriable = ("403" in msg or "Forbidden" in msg
                          or "needs to be reloaded" in msg or "Sign in to confirm" in msg
-                         or "ffmpeg exited" in msg)  # range fetches surface the 403 this way
+                         or "ffmpeg exited" in msg  # range fetches surface the 403 this way
+                         or "timed out" in msg.lower() or "timeout" in msg.lower())  # VPN stalls
             if not retriable or "youtu" not in src.url.lower():
                 raise
             # mid-download 403s are usually expired/rotated stream URLs; a plain
