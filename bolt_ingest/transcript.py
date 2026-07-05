@@ -256,11 +256,16 @@ def format_txt(segs, title: str, url: str, method: str) -> str:
     return "\n".join(head + body) + "\n"
 
 
-def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg):
+def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg, base: str = None):
     """Get the transcript for one Source. Returns (txt_path, method).
 
-    The .txt is named after the video so it sits right next to the clip.
+    The .txt is named after the clip (pass `base`) so it sits right next to it.
+    An existing .txt is kept as-is — transcripts don't get better on rerun.
     """
+    if base:
+        existing = ingest_dir / f"{base}.txt"
+        if existing.exists():
+            return existing, "already there"
     print(f"  Checking for platform captions ({src.url})...")
     segs, method, info = fetch_captions(src.url, cfg.get("cookies_browser", ""))
     if not segs:
@@ -271,8 +276,6 @@ def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg):
         raise RuntimeError("No speech found in this video.")
 
     title = info.get("title", "clip")
-    vid = info.get("id", "")
-    base = _sanitize(f"{title} [{vid}]" if vid else title)
-    txt_path = ingest_dir / f"{base}.txt"
+    txt_path = ingest_dir / f"{base or _sanitize(title)}.txt"
     txt_path.write_text(format_txt(segs, title, src.url, method), encoding="utf-8")
     return txt_path, method

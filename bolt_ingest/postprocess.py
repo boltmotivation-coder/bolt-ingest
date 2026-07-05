@@ -51,15 +51,22 @@ def probe(path: Path):
     return vcodec, acodec, width, height
 
 
-def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = ""):
-    """Returns (final_path, action, vcodec, resolution)."""
+def make_premiere_ready(tmp_path: Path, ingest_dir: Path, source_url: str = "",
+                        final_stem: str = None, overwrite: bool = False):
+    """Returns (final_path, action, vcodec, resolution).
+
+    final_stem: clean output name (no extension). overwrite=True replaces an
+    existing file of the same name (used when re-grabbing at better quality).
+    """
     ffmpeg, _ = _ffmpeg_paths()
     vcodec, acodec, w, h = probe(tmp_path)
-    final = ingest_dir / (tmp_path.stem + ".mp4")
-    i = 1
-    while final.exists():
-        final = ingest_dir / f"{tmp_path.stem} ({i}).mp4"
-        i += 1
+    stem = final_stem or tmp_path.stem
+    final = ingest_dir / f"{stem}.mp4"
+    if not overwrite:
+        i = 1
+        while final.exists():
+            final = ingest_dir / f"{stem} ({i}).mp4"
+            i += 1
 
     audio_args = ["-c:a", "copy"] if acodec in MP4_OK_AUDIO else ["-c:a", "aac", "-b:a", "320k"]
     # source url travels inside the file, so any clip in Premiere can be traced back

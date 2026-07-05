@@ -10,6 +10,22 @@ def _sanitize(name: str) -> str:
     return name[:80] or "clip"
 
 
+def best_available_height(url: str, cookies_browser: str = "") -> int:
+    """Highest video height the platform offers right now (0 if unknown)."""
+    import yt_dlp
+
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True}
+    if cookies_browser:
+        opts["cookiesfrombrowser"] = (cookies_browser,)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        heights = [f.get("height") or 0 for f in info.get("formats") or []]
+        return max(heights) if heights else int(info.get("height") or 0)
+    except Exception:
+        return 0
+
+
 def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str = "",
                     handle_seconds: int = 0):
     """Download one Source (full video or each range). Returns list of temp file paths.

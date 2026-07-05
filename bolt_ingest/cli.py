@@ -1,6 +1,7 @@
 import argparse
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -86,6 +87,30 @@ def paste_input(reader):
     return "".join(lines)
 
 
+def _dot_ts(sec):
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    return f"{h}.{m:02d}.{s:02d}" if h else f"{m}.{s:02d}"
+
+
+def _clip_stem(title, rng):
+    """Clean, human filename: 'Video Title' or 'Video Title (0.17-0.40)'."""
+    from .downloader import _sanitize
+    stem = _sanitize(title)[:70].rstrip(" .")
+    if rng:
+        stem += f" ({_dot_ts(rng[0])}-{_dot_ts(rng[1])})"
+    return stem
+
+
+_RANGE_SUFFIX = re.compile(r" \(\d+\.\d{2}(?:\.\d{2})?-\d+\.\d{2}(?:\.\d{2})?\)$")
+
+
+def _base_from_file(filename):
+    """Transcript base name from a clip filename (strip extension + range tag)."""
+    stem = Path(filename).stem
+    return _RANGE_SUFFIX.sub("", stem)
+
+
 def _fmt_range(rng):
     def f(sec):
         m, s = divmod(sec, 60)
@@ -137,20 +162,49 @@ def run(block_text, cfg, dry_run=False, ask=input):
         print("Cancelled.")
         return 0
 
-    from .downloader import download_source
+    from .downloader import download_source, best_available_height
     from .postprocess import make_premiere_ready
     from .manifest import write_manifest, ping_webhook
+    from .parser import Source
+    from . import library as lib_mod
 
     ingest = Path(cfg["ingest_dir"])
     tmp = ingest / ".bolt_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
+    lib = lib_mod.load(ingest)
 
     entries = []
     failed = []
+    tbase = {}  # source url -> transcript base name
     for i, src in enumerate(sources, 1):
         print(f"\n--- [{i}/{len(sources)}] {src.url}")
+
+        # skip what's already in ingest, unless better quality exists now
+        jobs = src.ranges if src.ranges else [None]
+        have = {r: lib_mod.lookup(lib, ingest, src.url, r) for r in jobs}
+        todo = [r for r in jobs if not have[r]]
+        overwrite_jobs = set()
+        if len(todo) < len(jobs):
+            best_h = best_available_height(src.url, cfg.get("cookies_browser", ""))
+            for r in jobs:
+                e = have[r]
+                if not e:
+                    continue
+                tbase.setdefault(src.url, _base_from_file(e["file"]))
+                if best_h and best_h > (e.get("height") or 0):
+                    print(f"  Better quality available now ({best_h}p vs {e['height']}p) "
+                          f"- re-grabbing {e['file']}")
+                    todo.append(r)
+                    overwrite_jobs.add(r)
+                else:
+                    q = f"{e['height']}p" if e.get("height") else "best quality"
+                    print(f"  Already in ingest: {e['file']} ({q}) - skipping")
+        if not todo:
+            continue
+
+        dl_src = Source(url=src.url, ranges=[r for r in todo if r], notes=src.notes)
         try:
-            downloads = download_source(src, ingest, tmp, cfg.get("cookies_browser", ""),
+            downloads = download_source(dl_src, ingest, tmp, cfg.get("cookies_browser", ""),
                                         handle_seconds=int(cfg.get("handle_seconds", 2)))
         except Exception as e:
             msg = str(e).splitlines()[0][:200]
@@ -160,8 +214,18 @@ def run(block_text, cfg, dry_run=False, ask=input):
             continue
 
         for d in downloads:
+            ow = d["range"] in overwrite_jobs or (None in overwrite_jobs and not d["range"])
+            old = have.get(d["range"] if d["range"] else None)
+            if ow and old:
+                stem = Path(old["file"]).stem      # same name, overwrite in place
+            else:
+                stem = _clip_stem(d["title"], d["range"])
+                if (ingest / f"{stem}.mp4").exists():
+                    # same title but a different video: disambiguate with a short id
+                    stem = f"{stem} [{(d['id'] or 'x')[:8]}]"
             try:
-                final, action, vcodec, res = make_premiere_ready(d["path"], ingest, d["source_url"])
+                final, action, vcodec, res = make_premiere_ready(
+                    d["path"], ingest, d["source_url"], final_stem=stem, overwrite=ow)
             except Exception as e:
                 # never lose footage: hand the raw file over and keep going
                 raw = ingest / d["path"].name
@@ -175,6 +239,13 @@ def run(block_text, cfg, dry_run=False, ask=input):
             size_mb = round(final.stat().st_size / 1_048_576, 1)
             rng = _fmt_range(d["range"]) if d["range"] else ""
             print(f"  -> {final.name}  ({res}, {vcodec}, {size_mb} MB, {action})")
+            try:
+                h_px = int(res.split("x")[1])
+            except (IndexError, ValueError):
+                h_px = 0
+            lib_mod.record(lib, d["source_url"], d["range"], final.name, h_px)
+            lib_mod.save(ingest, lib)
+            tbase[src.url] = _base_from_file(final.name)
             entries.append({
                 "title": d["title"], "id": d["id"], "source_url": d["source_url"],
                 "platform": d["extractor"], "range": rng, "notes": d["notes"],
@@ -182,18 +253,18 @@ def run(block_text, cfg, dry_run=False, ask=input):
                 "size_mb": size_mb, "action": action,
             })
 
-    # adjacent transcript for every source we actually pulled something from
-    if entries:
+    # adjacent transcript for every source we have footage from (skipped or new)
+    if tbase:
         from .transcript import fetch_script
         print("\n=== Transcripts ===")
-        done_urls = set()
         for src in sources:
-            if src.url in done_urls or not any(e["source_url"] == src.url for e in entries):
+            base = tbase.pop(src.url, None)
+            if not base:
                 continue
-            done_urls.add(src.url)
             try:
-                txt, method = fetch_script(src, ingest, tmp, cfg)
-                print(f"  -> {txt.name}  (via {method})")
+                txt, method = fetch_script(src, ingest, tmp, cfg, base=base)
+                label = "kept existing" if method == "already there" else f"via {method}"
+                print(f"  -> {txt.name}  ({label})")
             except Exception as e:
                 print(f"  (no transcript for {src.url}: {str(e).splitlines()[0][:150]})")
 
@@ -204,6 +275,8 @@ def run(block_text, cfg, dry_run=False, ask=input):
         ping_webhook(cfg.get("webhook_url", ""), payload)
         print(f"\nDone. {len(entries)} clip(s) in {ingest}")
         print(f"Manifest: {mpath.name}")
+    elif not failed:
+        print("\nEverything was already in ingest at best quality - nothing to download.")
     if failed:
         print(f"\n{len(failed)} source(s) failed:")
         for f in failed:
