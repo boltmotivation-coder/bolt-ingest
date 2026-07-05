@@ -1,7 +1,41 @@
 import re
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from .parser import seconds_to_tag
+
+
+@contextmanager
+def _section_heartbeat(tmp_dir: Path, interval: int = 15):
+    """Section grabs go through ffmpeg, which prints nothing - the terminal
+    sits silent for minutes and people assume bolt died. Poll the tmp folder
+    size so there's a visible sign of life."""
+    stop = threading.Event()
+
+    def _watch():
+        last = -1
+        while not stop.wait(interval):
+            try:
+                size = sum(f.stat().st_size for f in tmp_dir.iterdir() if f.is_file())
+            except OSError:
+                continue
+            mb = size / 1_000_000
+            if size > last:
+                print(f"  ...still downloading - {mb:.0f} MB so far (no progress bar on sections; "
+                      "clips appear in the ingest folder when finished)")
+            else:
+                print(f"  ...still working ({mb:.0f} MB so far) - if this line repeats for several "
+                      "minutes with the same number, Ctrl+C and rerun bolt")
+            last = size
+
+    t = threading.Thread(target=_watch, daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        t.join(timeout=2)
 
 
 def _sanitize(name: str) -> str:
@@ -64,7 +98,9 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
             opts["download_ranges"] = download_range_func(None, [padded])
             opts["force_keyframes_at_cuts"] = True
             print(f"  Grabbing section {seconds_to_tag(rng[0])}-{seconds_to_tag(rng[1])} "
-                  "(sections need clean cut points, so this takes longer than the clip length)...")
+                  "(sections need clean cut points, so this takes longer than the clip length).\n"
+                  "  Heads up: sections show no progress bar - bolt will report in every 15s so "
+                  "you know it's alive...")
         if cookies_browser:
             opts["cookiesfrombrowser"] = (cookies_browser,)
 
@@ -77,8 +113,14 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
                     p = Path(ydl.prepare_filename(inf)).with_suffix(".mkv")
             return inf, p
 
+        from contextlib import nullcontext
+
+        def _beat():
+            return _section_heartbeat(tmp_dir) if rng else nullcontext()
+
         try:
-            info, path = _grab(opts)
+            with _beat():
+                info, path = _grab(opts)
         except Exception as e:
             # YouTube bot-checks some networks (403 / "page needs to be reloaded");
             # the android/ios clients usually still work, so retry through them
@@ -92,10 +134,12 @@ def download_source(src, ingest_dir: Path, tmp_dir: Path, cookies_browser: str =
             # retry with fresh URLs keeps full quality, so try that first
             print("  Blocked by YouTube mid-download - retrying with fresh stream URLs...")
             try:
-                info, path = _grab(opts)
+                with _beat():
+                    info, path = _grab(opts)
             except Exception:
                 print("  Still blocked - falling back to mobile clients (may cap the resolution)...")
-                info, path = _grab({**opts, "extractor_args": {"youtube": {"player_client": ["android", "ios"]}}})
+                with _beat():
+                    info, path = _grab({**opts, "extractor_args": {"youtube": {"player_client": ["android", "ios"]}}})
                 h = info.get("height") or 0
                 if h and h < 720:
                     print(f"  WARNING: only got {h}p for this one - YouTube limited the backup route. "

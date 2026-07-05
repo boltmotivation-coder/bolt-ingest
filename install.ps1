@@ -14,6 +14,10 @@ if (-not $py) {
     exit
 }
 
+# Legacy Windows consoles use cp1252; pipx prints emoji and spits a scary
+# (but harmless) 'charmap' codec error without this.
+$env:PYTHONUTF8 = "1"
+
 python -m pip install --user -q pipx
 python -m pipx ensurepath | Out-Null
 $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
