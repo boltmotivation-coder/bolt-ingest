@@ -262,10 +262,12 @@ def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg, base: str = None):
     The .txt is named after the clip (pass `base`) so it sits right next to it.
     An existing .txt is kept as-is — transcripts don't get better on rerun.
     """
+    tdir = ingest_dir / "Transcripts"
     if base:
-        existing = ingest_dir / f"{base}.txt"
-        if existing.exists():
-            return existing, "already there"
+        # check the Transcripts folder plus the ingest root (older layout)
+        for cand in (tdir / f"{base}.txt", ingest_dir / f"{base}.txt"):
+            if cand.exists():
+                return cand, "already there"
     print(f"  Checking for platform captions ({src.url})...")
     segs, method, info = fetch_captions(src.url, cfg.get("cookies_browser", ""))
     if not segs:
@@ -276,6 +278,7 @@ def fetch_script(src, ingest_dir: Path, tmp_dir: Path, cfg, base: str = None):
         raise RuntimeError("No speech found in this video.")
 
     title = info.get("title", "clip")
-    txt_path = ingest_dir / f"{base or _sanitize(title)}.txt"
+    tdir.mkdir(exist_ok=True)
+    txt_path = tdir / f"{base or _sanitize(title)}.txt"
     txt_path.write_text(format_txt(segs, title, src.url, method), encoding="utf-8")
     return txt_path, method
