@@ -17,7 +17,7 @@ def write_manifest(ingest_dir: Path, entries):
         "clips": entries,
     }
     path = mdir / f"bolt_{stamp}.json"
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path, payload
 
 

@@ -125,7 +125,7 @@ def find_ingest_dir():
 def load():
     if CONFIG_PATH.exists():
         try:
-            cfg = {**DEFAULTS, **json.loads(CONFIG_PATH.read_text())}
+            cfg = {**DEFAULTS, **json.loads(CONFIG_PATH.read_text(encoding="utf-8"))}
         except Exception:
             cfg = dict(DEFAULTS)
     else:
@@ -135,7 +135,7 @@ def load():
 
 def save(cfg):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
 def _ask_path(prompt: str) -> str:
