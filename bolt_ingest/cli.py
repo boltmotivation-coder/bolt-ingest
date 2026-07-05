@@ -286,6 +286,15 @@ def run(block_text, cfg, dry_run=False, ask=input):
 
 
 def main():
+    # Windows defaults stdout to cp1252 (especially when redirected), which
+    # explodes on emoji in video titles. Force UTF-8 and never crash on output.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     ap = argparse.ArgumentParser(
         prog="bolt",
         description="Bolt Motivation footage ingest tool",
